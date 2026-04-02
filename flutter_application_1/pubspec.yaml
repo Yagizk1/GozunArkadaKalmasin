@@ -35,6 +35,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   permission_handler: ^12.0.1
+<<<<<<< HEAD
+  flutter_contacts: ^1.1.9+2
+=======
+>>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
 
 dev_dependencies:
   flutter_test:

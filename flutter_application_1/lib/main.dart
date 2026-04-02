@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+<<<<<<< HEAD
+import 'package:flutter_contacts/flutter_contacts.dart';
+=======
+>>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
 
 void main() {
   runApp(MyApp());
@@ -27,6 +31,31 @@ class AnaSayfa extends StatefulWidget {
 }
 
 class _AnaSayfaState extends State<AnaSayfa> {
+<<<<<<< HEAD
+  // Seçilen kişiyi ekranda göstermek için bir değişken oluşturuyoruz
+  String secilenKisi = "Henüz kişi seçilmedi";
+
+  void rehberiAcVeKisiSec() async {
+    // 1. Önce rehber izni var mı diye soruyoruz
+    if (await FlutterContacts.requestPermission()) {
+      // 2. İzin varsa telefonun orijinal rehberini açıp 1 kişi seçtiriyoruz
+      final contact = await FlutterContacts.openExternalPick();
+
+      // 3. Eğer kullanıcı geri tuşuna basmayıp gerçekten birini seçtiyse
+      if (contact != null) {
+        setState(() {
+          secilenKisi =
+              contact.displayName; // Seçilen kişinin adını ekrana yazdıracağız
+        });
+        print("Seçilen Kişi: ${contact.displayName}");
+      }
+    } else {
+      print("Kullanıcı rehber izni vermedi!");
+    }
+  }
+
+=======
+>>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
   bool korumaAcikmi = false;
   bool gizliModAktif = false; // 4. maddedeki "WOW" özelliği için hazırlık
 
