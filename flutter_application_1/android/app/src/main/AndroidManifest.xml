@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<<<<<<< HEAD
 <uses-permission android:name="android.permission.READ_CONTACTS" />
+=======
+>>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
     <application
         android:label="flutter_application_1"
         android:name="${applicationName}"

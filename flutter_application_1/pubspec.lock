@@ -62,6 +62,7 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+<<<<<<< HEAD
   flutter_contacts:
     dependency: "direct main"
     description:
@@ -70,6 +71,8 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.9+2"
+=======
+>>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
   flutter_lints:
     dependency: "direct dev"
     description:
