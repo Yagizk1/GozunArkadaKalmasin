@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-<<<<<<< HEAD
 import 'package:flutter_contacts/flutter_contacts.dart';
-=======
->>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
+import 'services/wake_word_service.dart'; // WAKE WORD SERVİSİ İÇE AKTARILDI
+import 'dart:async'; // ZAMANLAYICI İÇİN EKLENDİ
+import 'package:geolocator/geolocator.dart';
+import 'package:direct_sms/direct_sms.dart';
+
+
 
 void main() {
   runApp(MyApp());
 }
 
+// 1. UYGULAMANIN ANA İSKELETİ (Sadece tema ayarlarını tutar)
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner:
-          false, // Sağ üstteki "Debug" yazısını kaldırır
+      debugShowCheckedModeBanner: false,
       title: 'Gözüm Arkada Kalmasın',
       theme: ThemeData(
         primarySwatch: Colors.red,
@@ -31,33 +34,155 @@ class AnaSayfa extends StatefulWidget {
 }
 
 class _AnaSayfaState extends State<AnaSayfa> {
-<<<<<<< HEAD
-  // Seçilen kişiyi ekranda göstermek için bir değişken oluşturuyoruz
+  
+  // Değişkenler
   String secilenKisi = "Henüz kişi seçilmedi";
+  String secilenTelefon = ""; // YENİ: Numarayı tutacağımız yer
+  bool korumaAcikmi = false;
+  bool gizliModAktif = false;
+  SesDinlemeServisi? _sesDinlemeServisi;
+  final DirectSms directSms = DirectSms();
 
+  @override
+  void initState() {
+    super.initState();
+    
+    // 2. DÜZELTME: Sınıfı yeni adıyla başlatıyoruz
+    _sesDinlemeServisi = SesDinlemeServisi(
+      onWakeWordDetected: () {
+        // SES DUYULDUĞUNDA ARTIK GERİ SAYIMI BAŞLATIYORUZ
+        acilDurumBaslat(); 
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    // 3. DÜZELTME: Kapatırken de yeni isimle durduruyoruz
+    _sesDinlemeServisi?.stopListening();
+    super.dispose();
+  }
+
+  // --- FONKSİYONLAR ---
+
+  
+
+  // ACİL DURUM FONKSİYONU ARTIK DOĞRU YERDE!
+  void acilDurumBaslat() {
+    int sayac = 10; // 10 saniyelik iptal süresi
+    Timer? zamanlayici;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, 
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            
+            zamanlayici ??= Timer.periodic(Duration(seconds: 1), (timer) {
+              if (sayac > 0) {
+                setDialogState(() {
+                  sayac--;
+                });
+              } else {
+                timer.cancel();
+                Navigator.pop(context); 
+                gercekAcilDurumTetikte(); 
+              }
+            });
+
+            return AlertDialog(
+              backgroundColor: Colors.red[900],
+              title: Text("ACİL DURUM TETİKLENDİ!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              content: Text(
+                "Konumunuz ve yardım talebiniz\n$sayac saniye içinde\n'$secilenKisi' kişisine gönderilecek.\n\nYanlış alarm ise hemen iptal edin.",
+                style: TextStyle(color: Colors.white, fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+                    onPressed: () {
+                      zamanlayici?.cancel(); 
+                      Navigator.pop(context); 
+                      print("Acil durum kullanıcı tarafından iptal edildi.");
+                    },
+                    child: Text("YANLIŞ ALARM - İPTAL ET", style: TextStyle(color: Colors.red[900], fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // --- GÜNCELLENEN REHBER FONKSİYONU ---
   void rehberiAcVeKisiSec() async {
-    // 1. Önce rehber izni var mı diye soruyoruz
-    if (await FlutterContacts.requestPermission()) {
-      // 2. İzin varsa telefonun orijinal rehberini açıp 1 kişi seçtiriyoruz
+    if (await Permission.contacts.isGranted) {
+      await Future.delayed(Duration(milliseconds: 300));
       final contact = await FlutterContacts.openExternalPick();
 
-      // 3. Eğer kullanıcı geri tuşuna basmayıp gerçekten birini seçtiyse
       if (contact != null) {
+        // Sadece adını değil, tüm detaylarını (telefon numarası dahil) çekiyoruz
+        final tamKisi = await FlutterContacts.getContact(contact.id);
+        
         setState(() {
-          secilenKisi =
-              contact.displayName; // Seçilen kişinin adını ekrana yazdıracağız
+          secilenKisi = tamKisi?.displayName ?? "Bilinmeyen Kişi";
+          // Eğer kişinin numarası varsa alıyoruz
+          if (tamKisi != null && tamKisi.phones.isNotEmpty) {
+            secilenTelefon = tamKisi.phones.first.number;
+          } else {
+            secilenTelefon = "Numara bulunamadı";
+          }
         });
-        print("Seçilen Kişi: ${contact.displayName}");
+        print("Seçilen Kişi: $secilenKisi, Numara: $secilenTelefon");
       }
-    } else {
+    } else {  
       print("Kullanıcı rehber izni vermedi!");
     }
   }
 
-=======
->>>>>>> 00b1ca80bd800368a12f6198888722fd484ecf9a
-  bool korumaAcikmi = false;
-  bool gizliModAktif = false; // 4. maddedeki "WOW" özelliği için hazırlık
+  void gercekAcilDurumTetikte() async {
+    print("🚨 ACİL DURUM TETİKLENDİ 🚨");
+
+    // 1. Numara kontrolü
+    if (secilenTelefon.isEmpty || secilenTelefon == "Numara bulunamadı") {
+      print("❌ HATA: Gönderilecek numara seçilmemiş.");
+      return;
+    }
+
+    try {
+      // 2. Güncel Konumu Al
+      Position konum = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+      
+      // 3. Google Maps Linkini ve Mesajı Hazırla
+      // $ işaretlerini ve süslü parantezleri bu şekilde kullanmalısın
+      String haritaLinki = "https://www.google.com/maps/search/?api=1&query=${konum.latitude},${konum.longitude}";
+      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
+
+      // 4. SMS'i Gönder (İsimlendirilmiş Parametrelerle)
+      // Eğer 'message:' veya 'phoneNumber:' altı kırmızı çizilirse 
+      // sadece (acilMesaj, secilenTelefon) olarak değiştir.
+      // 4. SMS'i Gönder (Paketin tam istediği isimlerle)
+        directSms.sendSms(
+        message: acilMesaj, 
+        phone: secilenTelefon // 'phoneNumber' yerine sadece 'phone' yazdık!
+      );
+
+      print("✅ BAŞARILI: SMS '$secilenKisi' kişisine gönderildi.");
+    } catch (e) {
+      print("❌ KRİTİK HATA: $e");
+    }
+  }
+
+  // --- ARAYÜZ (UI) ---
 
   @override
   Widget build(BuildContext context) {
@@ -68,11 +193,22 @@ class _AnaSayfaState extends State<AnaSayfa> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // KORUMA BUTONU
             GestureDetector(
               onTap: () {
                 setState(() {
+                  // 1. Mevcut işlev: Görsel durumu (kırmızı/yeşil) değiştiriyoruz
                   korumaAcikmi = !korumaAcikmi;
+
+                  // 2. Yeni İşlev: Duruma göre mikrofonu yönetiyoruz
+                  if (korumaAcikmi) {
+                    // Buton yeşil olduğunda dinlemeyi başlat
+                    _sesDinlemeServisi?.startListening();
+                    print("KORUMA AKTİF: Dinleme başladı.");
+                  } else {
+                    // Buton kırmızı olduğunda dinlemeyi durdur
+                    _sesDinlemeServisi?.stopListening();
+                    print("KORUMA KAPALI: Dinleme durduruldu.");
+                  }
                 });
               },
               child: AnimatedContainer(
@@ -110,7 +246,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
             ),
             SizedBox(height: 40),
 
-            // GİZLİ MOD AYARI (WOW ÖZELLİĞİ HAZIRLIĞI)
             Card(
               elevation: 4,
               child: SwitchListTile(
@@ -126,12 +261,20 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
 
-            SizedBox(height: 20),
+            Text(
+              "Acil Durum Kişisi:\n$secilenKisi",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16, 
+                fontWeight: FontWeight.bold, 
+                color: secilenKisi == "Henüz kişi seçilmedi" ? Colors.grey : Colors.blue,
+              ),
+            ),
+            
+            SizedBox(height: 15),
 
-            // REHBER BUTONU (GÜNCELLENDİ: İZİNLER EKLENDİ)
             ElevatedButton.icon(
               onPressed: () async {
-                // Çoklu izin isteme penceresi tetikleniyor
                 Map<Permission, PermissionStatus> statuses = await [
                   Permission.microphone,
                   Permission.location,
@@ -139,11 +282,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
                   Permission.contacts,
                 ].request();
 
-                // İzinlerin verilip verilmediğini kontrol edelim
                 if (statuses[Permission.microphone]!.isGranted &&
                     statuses[Permission.location]!.isGranted) {
                   print("Harika! Mikrofon ve Konum izni alındı.");
-                  // Birazdan buraya rehberi açma kodunu ekleyeceğiz
+                  rehberiAcVeKisiSec(); 
                 } else {
                   print("Uygulamanın çalışması için izin vermeniz gerekiyor!");
                 }
