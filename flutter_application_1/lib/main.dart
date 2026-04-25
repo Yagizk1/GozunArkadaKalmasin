@@ -36,8 +36,7 @@ class AnaSayfa extends StatefulWidget {
 class _AnaSayfaState extends State<AnaSayfa> {
   
   // Değişkenler
-  String secilenKisi = "Henüz kişi seçilmedi";
-  String secilenTelefon = ""; // YENİ: Numarayı tutacağımız yer
+  List<Map<String, String>> secilenKisiler = [];
   bool korumaAcikmi = false;
   bool gizliModAktif = false;
   SesDinlemeServisi? _sesDinlemeServisi;
@@ -95,7 +94,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
               backgroundColor: Colors.red[900],
               title: Text("ACİL DURUM TETİKLENDİ!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               content: Text(
-                "Konumunuz ve yardım talebiniz\n$sayac saniye içinde\n'$secilenKisi' kişisine gönderilecek.\n\nYanlış alarm ise hemen iptal edin.",
+                "Konumunuz ve yardım talebiniz\n$sayac saniye içinde seçilen kişilere gönderilecek.\n\nYanlış alarm ise hemen iptal edin.",
                 style: TextStyle(color: Colors.white, fontSize: 18),
                 textAlign: TextAlign.center,
               ),
@@ -123,64 +122,70 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   // --- GÜNCELLENEN REHBER FONKSİYONU ---
   void rehberiAcVeKisiSec() async {
-    if (await Permission.contacts.isGranted) {
-      await Future.delayed(Duration(milliseconds: 300));
-      final contact = await FlutterContacts.openExternalPick();
+  if (await Permission.contacts.isGranted) {
+    await Future.delayed(Duration(milliseconds: 300));
+    final contact = await FlutterContacts.openExternalPick();
 
-      if (contact != null) {
-        // Sadece adını değil, tüm detaylarını (telefon numarası dahil) çekiyoruz
-        final tamKisi = await FlutterContacts.getContact(contact.id);
-        
+    if (contact != null) {
+      // Sadece adını değil, tüm detaylarını çekiyoruz
+      final tamKisi = await FlutterContacts.getContact(contact.id);
+
+      if (tamKisi != null && tamKisi.phones.isNotEmpty) {
+        String yeniAd = tamKisi.displayName;
+        String yeniNumara = tamKisi.phones.first.number;
+
         setState(() {
-          secilenKisi = tamKisi?.displayName ?? "Bilinmeyen Kişi";
-          // Eğer kişinin numarası varsa alıyoruz
-          if (tamKisi != null && tamKisi.phones.isNotEmpty) {
-            secilenTelefon = tamKisi.phones.first.number;
+          // Aynı numara listede zaten var mı diye kontrol ediyoruz
+          bool zatenVarMi = secilenKisiler.any((kisi) => kisi['numara'] == yeniNumara);
+          if (!zatenVarMi) {
+            secilenKisiler.add({'ad': yeniAd, 'numara': yeniNumara});
+            print("Eklendi: $yeniAd - $yeniNumara");
           } else {
-            secilenTelefon = "Numara bulunamadı";
+            print("Bu kişi zaten ekli!");
           }
         });
-        print("Seçilen Kişi: $secilenKisi, Numara: $secilenTelefon");
+      } else {
+        print("Seçilen kişinin numarası bulunamadı.");
       }
-    } else {  
-      print("Kullanıcı rehber izni vermedi!");
     }
+  } else {  
+    print("Kullanıcı rehber izni vermedi!");
   }
+}
 
   void gercekAcilDurumTetikte() async {
-    print("🚨 ACİL DURUM TETİKLENDİ 🚨");
+  print("🚨 ACİL DURUM TETİKLENDİ 🚨");
 
-    // 1. Numara kontrolü
-    if (secilenTelefon.isEmpty || secilenTelefon == "Numara bulunamadı") {
-      print("❌ HATA: Gönderilecek numara seçilmemiş.");
-      return;
-    }
-
-    try {
-      // 2. Güncel Konumu Al
-      Position konum = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
-      );
-      
-      // 3. Google Maps Linkini ve Mesajı Hazırla
-      // $ işaretlerini ve süslü parantezleri bu şekilde kullanmalısın
-      String haritaLinki = "https://www.google.com/maps/search/?api=1&query=${konum.latitude},${konum.longitude}";
-      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
-
-      // 4. SMS'i Gönder (İsimlendirilmiş Parametrelerle)
-      // Eğer 'message:' veya 'phoneNumber:' altı kırmızı çizilirse 
-      // sadece (acilMesaj, secilenTelefon) olarak değiştir.
-      // 4. SMS'i Gönder (Paketin tam istediği isimlerle)
-        directSms.sendSms(
-        message: acilMesaj, 
-        phone: secilenTelefon // 'phoneNumber' yerine sadece 'phone' yazdık!
-      );
-
-      print("✅ BAŞARILI: SMS '$secilenKisi' kişisine gönderildi.");
-    } catch (e) {
-      print("❌ KRİTİK HATA: $e");
-    }
+  // 1. Liste boş mu kontrolü
+  if (secilenKisiler.isEmpty) {
+    print("❌ HATA: Gönderilecek acil durum kişisi seçilmemiş.");
+    return;
   }
+
+  try {
+    // 2. Güncel Konumu Al
+    Position konum = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high
+    );
+
+    // 3. Google Maps Linkini ve Mesajı Hazırla (URL formatı düzeltildi)
+    String haritaLinki = "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
+    String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
+
+    // 4. Listedeki herkese sırayla SMS Gönder
+    for (var kisi in secilenKisiler) {
+      String numara = kisi['numara']!;
+      directSms.sendSms(
+        message: acilMesaj, 
+        phone: numara 
+      );
+      print("✅ BAŞARILI: SMS '${kisi['ad']}' kişisine gönderildi.");
+    }
+
+  } catch (e) {
+    print("❌ KRİTİK HATA: $e");
+  }
+}
 
   // --- ARAYÜZ (UI) ---
 
@@ -261,15 +266,34 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
 
-            Text(
-              "Acil Durum Kişisi:\n$secilenKisi",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16, 
-                fontWeight: FontWeight.bold, 
-                color: secilenKisi == "Henüz kişi seçilmedi" ? Colors.grey : Colors.blue,
+            Column(
+            children: [
+              Text(
+                "Acil Durum Kişileri:",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
               ),
-            ),
+              SizedBox(height: 10),
+              secilenKisiler.isEmpty 
+                ? Text("Henüz kişi seçilmedi", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
+                : Wrap(
+                    spacing: 8.0, 
+                    runSpacing: 4.0, 
+                    alignment: WrapAlignment.center,
+                    children: secilenKisiler.map((kisi) {
+                      return Chip(
+                        label: Text(kisi['ad']!),
+                        backgroundColor: Colors.red[100],
+                        deleteIcon: Icon(Icons.cancel, size: 20, color: Colors.red[900]),
+                        onDeleted: () {
+                          setState(() {
+                            secilenKisiler.remove(kisi);
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+            ],
+          ),
             
             SizedBox(height: 15),
 
