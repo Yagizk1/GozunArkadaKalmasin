@@ -1,24 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import 'services/wake_word_service.dart'; // WAKE WORD SERVİSİ İÇE AKTARILDI
-import 'dart:async'; // ZAMANLAYICI İÇİN EKLENDİ
+import 'services/wake_word_service.dart'; 
+import 'dart:async'; 
 import 'package:geolocator/geolocator.dart';
 import 'package:direct_sms/direct_sms.dart';
-
-
 
 void main() {
   runApp(MyApp());
 }
 
-// 1. UYGULAMANIN ANA İSKELETİ (Sadece tema ayarlarını tutar)
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Gözüm Arkada Kalmasın',
+      title: 'Gözün Arkada Kalmasın',
       theme: ThemeData(
         primarySwatch: Colors.red,
         scaffoldBackgroundColor: Colors.grey[100],
@@ -37,8 +34,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
   
   // Değişkenler
   List<Map<String, String>> secilenKisiler = [];
+  List<String> tetikleyiciKelimeler = ["imdat", "yardım"]; 
+  TextEditingController kelimeController = TextEditingController();
   bool korumaAcikmi = false;
-  bool gizliModAktif = false;
   SesDinlemeServisi? _sesDinlemeServisi;
   final DirectSms directSms = DirectSms();
 
@@ -46,10 +44,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
   void initState() {
     super.initState();
     
-    // 2. DÜZELTME: Sınıfı yeni adıyla başlatıyoruz
     _sesDinlemeServisi = SesDinlemeServisi(
       onWakeWordDetected: () {
-        // SES DUYULDUĞUNDA ARTIK GERİ SAYIMI BAŞLATIYORUZ
         acilDurumBaslat(); 
       },
     );
@@ -57,18 +53,14 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   @override
   void dispose() {
-    // 3. DÜZELTME: Kapatırken de yeni isimle durduruyoruz
     _sesDinlemeServisi?.stopListening();
     super.dispose();
   }
 
   // --- FONKSİYONLAR ---
 
-  
-
-  // ACİL DURUM FONKSİYONU ARTIK DOĞRU YERDE!
   void acilDurumBaslat() {
-    int sayac = 10; // 10 saniyelik iptal süresi
+    int sayac = 10; 
     Timer? zamanlayici;
 
     showDialog(
@@ -87,6 +79,15 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 timer.cancel();
                 Navigator.pop(context); 
                 gercekAcilDurumTetikte(); 
+                
+                // 1. GÜNCELLEME: Gerçekten mesaj atıldıktan sonra (süre bitince) 
+                // koruma hala açıksa sistemi tekrar dinlemeye al.
+                if (korumaAcikmi) {
+                  Future.delayed(Duration(seconds: 2), () {
+                    _sesDinlemeServisi?.startListening(tetikleyiciKelimeler);
+                    print("Koruma modu açık: Dinleme yeniden başlatıldı.");
+                  });
+                }
               }
             });
 
@@ -108,6 +109,15 @@ class _AnaSayfaState extends State<AnaSayfa> {
                       zamanlayici?.cancel(); 
                       Navigator.pop(context); 
                       print("Acil durum kullanıcı tarafından iptal edildi.");
+                      
+                      // 2. GÜNCELLEME: Yanlış alarm diyip iptal edildiğinde
+                      // koruma hala açıksa sistemi hemen dinlemeye al.
+                      if (korumaAcikmi) {
+                        Future.delayed(Duration(milliseconds: 500), () {
+                          _sesDinlemeServisi?.startListening(tetikleyiciKelimeler);
+                          print("İptal edildi. Koruma modu açık: Dinleme yeniden başlatıldı.");
+                        });
+                      }
                     },
                     child: Text("YANLIŞ ALARM - İPTAL ET", style: TextStyle(color: Colors.red[900], fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
@@ -120,207 +130,337 @@ class _AnaSayfaState extends State<AnaSayfa> {
     );
   }
 
-  // --- GÜNCELLENEN REHBER FONKSİYONU ---
   void rehberiAcVeKisiSec() async {
-  if (await Permission.contacts.isGranted) {
-    await Future.delayed(Duration(milliseconds: 300));
-    final contact = await FlutterContacts.openExternalPick();
+    if (await Permission.contacts.isGranted) {
+      await Future.delayed(Duration(milliseconds: 300));
+      final contact = await FlutterContacts.openExternalPick();
 
-    if (contact != null) {
-      // Sadece adını değil, tüm detaylarını çekiyoruz
-      final tamKisi = await FlutterContacts.getContact(contact.id);
+      if (contact != null) {
+        final tamKisi = await FlutterContacts.getContact(contact.id);
 
-      if (tamKisi != null && tamKisi.phones.isNotEmpty) {
-        String yeniAd = tamKisi.displayName;
-        String yeniNumara = tamKisi.phones.first.number;
+        if (tamKisi != null && tamKisi.phones.isNotEmpty) {
+          String yeniAd = tamKisi.displayName;
+          String yeniNumara = tamKisi.phones.first.number;
 
-        setState(() {
-          // Aynı numara listede zaten var mı diye kontrol ediyoruz
-          bool zatenVarMi = secilenKisiler.any((kisi) => kisi['numara'] == yeniNumara);
-          if (!zatenVarMi) {
-            secilenKisiler.add({'ad': yeniAd, 'numara': yeniNumara});
-            print("Eklendi: $yeniAd - $yeniNumara");
-          } else {
-            print("Bu kişi zaten ekli!");
-          }
-        });
-      } else {
-        print("Seçilen kişinin numarası bulunamadı.");
+          setState(() {
+            bool zatenVarMi = secilenKisiler.any((kisi) => kisi['numara'] == yeniNumara);
+            if (!zatenVarMi) {
+              secilenKisiler.add({'ad': yeniAd, 'numara': yeniNumara});
+              print("Eklendi: $yeniAd - $yeniNumara");
+            } else {
+              print("Bu kişi zaten ekli!");
+            }
+          });
+        } else {
+          print("Seçilen kişinin numarası bulunamadı.");
+        }
       }
+    } else {  
+      print("Kullanıcı rehber izni vermedi!");
     }
-  } else {  
-    print("Kullanıcı rehber izni vermedi!");
   }
-}
 
   void gercekAcilDurumTetikte() async {
-  print("🚨 ACİL DURUM TETİKLENDİ 🚨");
+    print("🚨 ACİL DURUM TETİKLENDİ 🚨");
 
-  // 1. Liste boş mu kontrolü
-  if (secilenKisiler.isEmpty) {
-    print("❌ HATA: Gönderilecek acil durum kişisi seçilmemiş.");
-    return;
-  }
-
-  try {
-    // 2. Güncel Konumu Al
-    Position konum = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high
-    );
-
-    // 3. Google Maps Linkini ve Mesajı Hazırla (URL formatı düzeltildi)
-    String haritaLinki = "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
-    String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
-
-    // 4. Listedeki herkese sırayla SMS Gönder
-    for (var kisi in secilenKisiler) {
-      String numara = kisi['numara']!;
-      directSms.sendSms(
-        message: acilMesaj, 
-        phone: numara 
-      );
-      print("✅ BAŞARILI: SMS '${kisi['ad']}' kişisine gönderildi.");
+    if (secilenKisiler.isEmpty) {
+      print("❌ HATA: Gönderilecek acil durum kişisi seçilmemiş.");
+      return;
     }
 
-  } catch (e) {
-    print("❌ KRİTİK HATA: $e");
+    try {
+      Position konum = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+
+      // Google Maps linki sorunsuz tıklanması için standart formata çevrildi
+      String haritaLinki = "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
+      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
+
+      for (var kisi in secilenKisiler) {
+        String numara = kisi['numara']!;
+        directSms.sendSms(
+          message: acilMesaj, 
+          phone: numara 
+        );
+        print("✅ BAŞARILI: SMS '${kisi['ad']}' kişisine gönderildi.");
+      }
+
+    } catch (e) {
+      print("❌ KRİTİK HATA: $e");
+    }
   }
-}
 
   // --- ARAYÜZ (UI) ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Gözüm Arkada Kalmasın"), centerTitle: true),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  // 1. Mevcut işlev: Görsel durumu (kırmızı/yeşil) değiştiriyoruz
-                  korumaAcikmi = !korumaAcikmi;
-
-                  // 2. Yeni İşlev: Duruma göre mikrofonu yönetiyoruz
-                  if (korumaAcikmi) {
-                    // Buton yeşil olduğunda dinlemeyi başlat
-                    _sesDinlemeServisi?.startListening();
-                    print("KORUMA AKTİF: Dinleme başladı.");
-                  } else {
-                    // Buton kırmızı olduğunda dinlemeyi durdur
-                    _sesDinlemeServisi?.stopListening();
-                    print("KORUMA KAPALI: Dinleme durduruldu.");
-                  }
-                });
-              },
-              child: AnimatedContainer(
-                duration: Duration(milliseconds: 300),
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  color: korumaAcikmi ? Colors.green : Colors.red,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: korumaAcikmi
-                          ? Colors.green.withOpacity(0.4)
-                          : Colors.red.withOpacity(0.4),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  korumaAcikmi ? Icons.security : Icons.security_update_warning,
-                  size: 100,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            SizedBox(height: 30),
-            Text(
-              korumaAcikmi ? "DİNLEME AKTİF" : "KORUMA KAPALI",
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: korumaAcikmi ? Colors.green : Colors.red,
-              ),
-            ),
-            SizedBox(height: 40),
-
-            Card(
-              elevation: 4,
-              child: SwitchListTile(
-                title: Text("Gizli Kayıt Modu"),
-                subtitle: Text("Tetikteyken ekran kararır."),
-                value: gizliModAktif,
-                onChanged: (bool value) {
-                  setState(() {
-                    gizliModAktif = value;
-                  });
-                },
-                secondary: Icon(Icons.visibility_off, color: Colors.blueGrey),
-              ),
-            ),
-
-            Column(
+      backgroundColor: Colors.grey[100], 
+      appBar: AppBar(
+        title: Text("Gözün Arkada Kalmasın", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.pink[800], 
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                "Acil Durum Kişileri:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-              ),
-              SizedBox(height: 10),
-              secilenKisiler.isEmpty 
-                ? Text("Henüz kişi seçilmedi", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
-                : Wrap(
-                    spacing: 8.0, 
-                    runSpacing: 4.0, 
-                    alignment: WrapAlignment.center,
-                    children: secilenKisiler.map((kisi) {
-                      return Chip(
-                        label: Text(kisi['ad']!),
-                        backgroundColor: Colors.red[100],
-                        deleteIcon: Icon(Icons.cancel, size: 20, color: Colors.red[900]),
-                        onDeleted: () {
-                          setState(() {
-                            secilenKisiler.remove(kisi);
-                          });
-                        },
-                      );
-                    }).toList(),
+              
+              // 1. BÖLÜM: DEV PANİK BUTONU
+              SizedBox(height: 20),
+              Center(
+                child: Container(
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.redAccent.withOpacity(0.4),
+                        spreadRadius: 15,
+                        blurRadius: 30,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
                   ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[700],
+                      shape: CircleBorder(),
+                      padding: EdgeInsets.all(40),
+                      elevation: 10,
+                    ),
+                    onPressed: () {
+                      print("🚨 MANUEL SOS BUTONUNA BASILDI! 🚨");
+                      acilDurumBaslat(); // BUTON ARTIK DOĞRUDAN TETİKLİYOR
+                    },
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.touch_app, size: 60, color: Colors.white),
+                        SizedBox(height: 10),
+                        Text(
+                          "YARDIM\nİSTE",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 30),
+
+              // 2. BÖLÜM: DİNLEME (KORUMA) MODU ANAHTARI
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: SwitchListTile(
+                  title: Text(
+                    "Sesli Koruma Modu",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                     korumaAcikmi 
+                        ? "Arka planda tetikleyici kelimeler dinleniyor." 
+                        : "Dinleme kapalı.",
+                  ),
+                  secondary: Icon(
+                    korumaAcikmi ? Icons.mic : Icons.mic_off,
+                    color: korumaAcikmi ? Colors.green : Colors.grey,
+                    size: 32,
+                  ),
+                  value: korumaAcikmi,
+                  activeColor: Colors.green,
+                  onChanged: (bool deger) {
+                    setState(() {
+                      korumaAcikmi = deger;
+                      if (korumaAcikmi) {
+                        _sesDinlemeServisi?.startListening(tetikleyiciKelimeler);
+                      } else {
+                        _sesDinlemeServisi?.stopListening();
+                      }
+                    });
+                  },
+                ),
+              ),
+              SizedBox(height: 20),
+
+              // 3. BÖLÜM: TETİKLEYİCİ KELİMELER KARTI
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.record_voice_over, color: Colors.pink[800]),
+                          SizedBox(width: 10),
+                          Text(
+                            "Tetikleyici Kelimeler",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      Divider(height: 20, thickness: 1),
+                      
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 4.0,
+                        children: tetikleyiciKelimeler.map((kelime) {
+                          return Chip(
+                            label: Text(kelime),
+                            backgroundColor: Colors.pink[50],
+                            deleteIcon: tetikleyiciKelimeler.length > 1 
+                                ? Icon(Icons.cancel, size: 20, color: Colors.pink[900]) 
+                                : null,
+                            onDeleted: tetikleyiciKelimeler.length > 1 ? () {
+                              setState(() {
+                                tetikleyiciKelimeler.remove(kelime);
+                              });
+                            } : null,
+                          );
+                        }).toList(),
+                      ),
+                      SizedBox(height: 15),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: kelimeController,
+                              decoration: InputDecoration(
+                                hintText: "Yeni kelime ekle...",
+                                prefixIcon: Icon(Icons.add_comment, color: Colors.grey),
+                                filled: true,
+                                fillColor: Colors.grey[200],
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(vertical: 0),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: () {
+                              String yeniKelime = kelimeController.text.trim().toLowerCase();
+                              if (yeniKelime.isNotEmpty && !tetikleyiciKelimeler.contains(yeniKelime)) {
+                                setState(() {
+                                  tetikleyiciKelimeler.add(yeniKelime);
+                                  kelimeController.clear();
+                                });
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.pink[800],
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                            ),
+                            child: Text("Ekle", style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+
+              // 4. BÖLÜM: ACİL DURUM KİŞİLERİ KARTI
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.contact_phone, color: Colors.pink[800]),
+                          SizedBox(width: 10),
+                          Text(
+                            "Acil Durum Kişileri",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      Divider(height: 20, thickness: 1),
+                      
+                      // Kişi Ekleme Butonu
+                      Center(
+                        child: ElevatedButton.icon(
+                          onPressed: rehberiAcVeKisiSec,
+                          icon: Icon(Icons.person_add, color: Colors.white),
+                          label: Text("Rehberden Kişi Ekle", style: TextStyle(color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.pink[800],
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 15),
+
+                      // Eklenen Kişilerin Listesi
+                      secilenKisiler.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Text("Henüz acil durum kişisi eklenmedi.", style: TextStyle(color: Colors.grey)),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              itemCount: secilenKisiler.length,
+                              itemBuilder: (context, index) {
+                                var kisi = secilenKisiler[index];
+                                return Card(
+                                  color: Colors.pink[50],
+                                  elevation: 0,
+                                  margin: EdgeInsets.symmetric(vertical: 4),
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: Colors.pink[200],
+                                      child: Icon(Icons.person, color: Colors.white),
+                                    ),
+                                    title: Text(kisi['ad']!, style: TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text(kisi['numara']!),
+                                    trailing: IconButton(
+                                      icon: Icon(Icons.delete, color: Colors.red[400]),
+                                      onPressed: () {
+                                        setState(() {
+                                          secilenKisiler.removeAt(index);
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 30), 
+
             ],
           ),
-            
-            SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: () async {
-                Map<Permission, PermissionStatus> statuses = await [
-                  Permission.microphone,
-                  Permission.location,
-                  Permission.sms,
-                  Permission.contacts,
-                ].request();
-
-                if (statuses[Permission.microphone]!.isGranted &&
-                    statuses[Permission.location]!.isGranted) {
-                  print("Harika! Mikrofon ve Konum izni alındı.");
-                  rehberiAcVeKisiSec(); 
-                } else {
-                  print("Uygulamanın çalışması için izin vermeniz gerekiyor!");
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-              ),
-              icon: Icon(Icons.people),
-              label: Text("Acil Durum Kişilerini Seç"),
-            ),
-          ],
         ),
       ),
     );
