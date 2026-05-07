@@ -1,52 +1,90 @@
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class SesDinlemeServisi {
-  final stt.SpeechToText _speechToText = stt.SpeechToText();
-  final Function() onWakeWordDetected;
-  bool _dinliyorMu = false;
+  final Function onWakeWordDetected;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  
+  bool _isListening = false;
+  bool _hasInitialized = false; 
+  List<String> _aktifKelimeler = [];
 
   SesDinlemeServisi({required this.onWakeWordDetected});
 
-  // Dinlemeyi Başlat
-  Future<void> startListening() async {
-    // Önce mikrofonu kullanmaya hazır mıyız diye telefonu kontrol ediyoruz
-    bool isAvailable = await _speechToText.initialize(
-      onStatus: (status) => print('Ses Durumu: $status'),
-      onError: (errorNotification) => print('Ses Hatası: $errorNotification'),
+  Future<void> _initEgerGerekliyse() async {
+    if (_hasInitialized) return; 
+    
+    _hasInitialized = await _speech.initialize(
+      onStatus: (status) {
+        print("Mikrofon Durumu: $status");
+        if ((status == 'done' || status == 'notListening') && _isListening) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_isListening) _startDinlemeIcGorev();
+          });
+        }
+      },
+      onError: (error) {
+        print("Dinleme Hatası: $error");
+        if (_isListening) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_isListening) _startDinlemeIcGorev();
+          });
+        }
+      },
     );
+  }
 
-    if (isAvailable) {
-      _dinliyorMu = true;
-      _speechToText.listen(
-        localeId: 'tr_TR', // Doğrudan Türkçe dinliyoruz!
-        onResult: (sonuc) {
-          // Telefonun duyduğu kelimeleri alıp küçük harfe çeviriyoruz
-          String duyulanCumle = sonuc.recognizedWords.toLowerCase();
-          print("Duyulan kelimeler: $duyulanCumle");
+  void startListening(List<String> tetikleyiciKelimeler) async {
+    if (_isListening) return;
+    _isListening = true;
+    _aktifKelimeler = tetikleyiciKelimeler;
 
-          // ŞİFRELERİMİZ BURADA: Bu kelimelerden biri geçerse tetikle!
-          if (duyulanCumle.contains('imdat') || 
-              duyulanCumle.contains('yardım') || 
-              duyulanCumle.contains('polisi arayın')) {
-            
-            print("🚨 ŞİFRE KELİME DUYULDU! 🚨");
-            stopListening(); // Tetiklendiğinde dinlemeyi durdur
-            onWakeWordDetected(); // AnaSayfa'daki geri sayımı başlat
-          }
-        },
-      );
-      print("Sistem Türkçe dinlemeye başladı. 'İmdat' veya 'Yardım' demeyi deneyin.");
+    await _initEgerGerekliyse();
+
+    if (_hasInitialized) {
+      if (_speech.isListening) {
+        await _speech.cancel();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      _startDinlemeIcGorev();
     } else {
-      print("Kullanıcının telefonu ses tanıma özelliğini desteklemiyor veya izin verilmedi.");
+      print("Kullanıcı mikrofona izin vermedi.");
     }
   }
 
-  // Dinlemeyi Durdur
-  void stopListening() {
-    if (_dinliyorMu) {
-      _speechToText.stop();
-      _dinliyorMu = false;
-      print("Dinleme durduruldu.");
+  void _startDinlemeIcGorev() {
+    if (!_isListening) return; 
+
+    _speech.listen(
+      localeId: "tr_TR",
+      cancelOnError: false,
+      partialResults: true,
+      listenFor: const Duration(minutes: 30),
+      pauseFor: const Duration(minutes: 5),
+      // DESİBEL VE FREKANS KISIMLARI TAMAMEN SİLİNDİ!
+      onResult: (result) {
+        String duyulanMetin = result.recognizedWords.toLowerCase();
+        for (String kelime in _aktifKelimeler) {
+          if (duyulanMetin.contains(kelime.toLowerCase())) {
+            print("🚨 ÖZEL KELİME DUYULDU: $kelime 🚨");
+            _tetiklenmeyiBaslat();
+            return;
+          }
+        }
+      },
+    );
+  }
+
+  void _tetiklenmeyiBaslat() {
+    if (!_isListening) return; 
+    stopListening(); 
+    onWakeWordDetected(); 
+  }
+
+  void stopListening() async {
+    _isListening = false;
+    if (_hasInitialized) {
+      await _speech.cancel(); 
     }
+    print("Dinleme servisi kapatıldı.");
   }
 }
