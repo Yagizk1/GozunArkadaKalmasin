@@ -3,16 +3,16 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 class SesDinlemeServisi {
   final Function onWakeWordDetected;
   final stt.SpeechToText _speech = stt.SpeechToText();
-
+  
   bool _isListening = false;
-  bool _hasInitialized = false;
+  bool _hasInitialized = false; 
   List<String> _aktifKelimeler = [];
 
   SesDinlemeServisi({required this.onWakeWordDetected});
 
   Future<void> _initEgerGerekliyse() async {
-    if (_hasInitialized) return;
-
+    if (_hasInitialized) return; 
+    
     _hasInitialized = await _speech.initialize(
       onStatus: (status) {
         print("Mikrofon Durumu: $status");
@@ -52,7 +52,7 @@ class SesDinlemeServisi {
   }
 
   void _startDinlemeIcGorev() {
-    if (!_isListening) return;
+    if (!_isListening) return; 
 
     _speech.listen(
       localeId: "tr_TR",
@@ -75,15 +75,15 @@ class SesDinlemeServisi {
   }
 
   void _tetiklenmeyiBaslat() {
-    if (!_isListening) return;
-    stopListening();
-    onWakeWordDetected();
+    if (!_isListening) return; 
+    stopListening(); 
+    onWakeWordDetected(); 
   }
 
   void stopListening() async {
     _isListening = false;
     if (_hasInitialized) {
-      await _speech.cancel();
+      await _speech.cancel(); 
     }
     print("Dinleme servisi kapatıldı.");
   }
