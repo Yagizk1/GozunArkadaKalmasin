@@ -1,7 +1,7 @@
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class SesDinlemeServisi {
-  final Function onWakeWordDetected;
+  final void Function() onWakeWordDetected;
   final stt.SpeechToText _speech = stt.SpeechToText();
 
   bool _isListening = false;
