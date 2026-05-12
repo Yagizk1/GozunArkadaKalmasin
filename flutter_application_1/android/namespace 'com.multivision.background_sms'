@@ -1,0 +1,10 @@
+android {
+    namespace 'com.multivision.background_sms'  // <-- BU SATIRI MANUEL OLARAK EKLEYİN
+    
+    compileSdkVersion 30 // (Bu kısımlar pakette zaten var, dokunmayın)
+    
+    defaultConfig {
+        minSdkVersion 16
+        // ...
+    }
+}

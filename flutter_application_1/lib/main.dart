@@ -5,12 +5,16 @@ import 'services/wake_word_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:direct_sms/direct_sms.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -26,8 +30,10 @@ class MyApp extends StatelessWidget {
 }
 
 class AnaSayfa extends StatefulWidget {
+  const AnaSayfa({super.key});
+
   @override
-  _AnaSayfaState createState() => _AnaSayfaState();
+  State<AnaSayfa> createState() => _AnaSayfaState();
 }
 
 class _AnaSayfaState extends State<AnaSayfa> {
@@ -53,6 +59,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   @override
   void dispose() {
     _sesDinlemeServisi?.stopListening();
+    record.dispose();
     super.dispose();
   }
 
@@ -65,9 +72,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (BuildContext statefulContext, StateSetter setDialogState) {
             zamanlayici ??= Timer.periodic(Duration(seconds: 1), (timer) {
               if (sayac > 0) {
                 setDialogState(() {
@@ -75,7 +82,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 });
               } else {
                 timer.cancel();
-                Navigator.pop(context);
+                if (mounted) Navigator.pop(dialogContext);
                 gercekAcilDurumTetikte();
 
                 // 1. GÜNCELLEME: Gerçekten mesaj atıldıktan sonra (süre bitince)
@@ -113,7 +120,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                     ),
                     onPressed: () {
                       zamanlayici?.cancel();
-                      Navigator.pop(context);
+                      if (mounted) Navigator.pop(dialogContext);
                       print("Acil durum kullanıcı tarafından iptal edildi.");
 
                       // 2. GÜNCELLEME: Yanlış alarm diyip iptal edildiğinde
@@ -148,7 +155,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 
   void rehberiAcVeKisiSec() async {
-    if (await Permission.contacts.isGranted) {
+    // Sadece izni kontrol etme, yoksa izin iste.
+    PermissionStatus rehberIzin = await Permission.contacts.request();
+    if (rehberIzin.isGranted) {
       await Future.delayed(Duration(milliseconds: 300));
       final contact = await FlutterContacts.openExternalPick();
 
@@ -158,6 +167,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
         if (tamKisi != null && tamKisi.phones.isNotEmpty) {
           String yeniAd = tamKisi.displayName;
           String yeniNumara = tamKisi.phones.first.number;
+
+          if (!mounted) {
+            return; // Asenkron işlem sonrası sayfa kapandıysa çökmesin
+          }
 
           setState(() {
             bool zatenVarMi = secilenKisiler.any(
@@ -188,6 +201,28 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
 
     try {
+      // 1. Konum İzni Kontrolü ve İstenmesi
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print("❌ HATA: Konum izni verilmedi.");
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print("❌ HATA: Konum izinleri kalıcı olarak reddedildi.");
+        return;
+      }
+
+      // 2. SMS İzni Kontrolü ve İstenmesi
+      PermissionStatus smsIzin = await Permission.sms.request();
+      if (!smsIzin.isGranted) {
+        print("❌ HATA: SMS gönderme izni reddedildi.");
+        return;
+      }
+
       Position konum = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -204,6 +239,48 @@ class _AnaSayfaState extends State<AnaSayfa> {
       }
     } catch (e) {
       print("❌ KRİTİK HATA: $e");
+    }
+  }
+
+  // Ses kayıt cihazımızı ve durumunu tanımlıyoruz
+  final record = AudioRecorder();
+  bool isRecording = false;
+
+  // 15 saniyelik otomatik kayıt fonksiyonu
+  Future<void> acilDurumKaydiniBaslat() async {
+    try {
+      // Mikrofon izni kontrolü
+      if (await record.hasPermission()) {
+        setState(() {
+          isRecording = true; // Buton rengini değiştirmek için
+        });
+
+        // Kaydı başlat (Güvenli klasör yolu alarak)
+        final directory = await getApplicationDocumentsDirectory();
+        final sesDosyasiYolu = '${directory.path}/acil_durum_kaydi.m4a';
+        await record.start(const RecordConfig(), path: sesDosyasiYolu);
+        print("🎙️ Kayıt başladı! 15 saniye sayılıyor...");
+
+        // 15 saniye bekle ve durdur
+        Future.delayed(const Duration(seconds: 15), () async {
+          if (await record.isRecording()) {
+            final String? dosyaYolu = await record.stop();
+
+            if (mounted) {
+              setState(() {
+                isRecording = false; // Kayıt bittiğinde butonu normale döndür
+              });
+            }
+
+            print("✅ 15 saniye doldu. Kayıt otomatik durdu!");
+            print("📁 Dosya yolu: $dosyaYolu");
+          }
+        });
+      } else {
+        print("❌ Mikrofon izni verilmedi!");
+      }
+    } catch (e) {
+      print("❌ Kayıt başlatılırken hata oluştu: $e");
     }
   }
 
@@ -228,6 +305,25 @@ class _AnaSayfaState extends State<AnaSayfa> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              ElevatedButton.icon(
+                // Eğer kayıt yapılıyorsa butona tekrar basılmasını engelle
+                onPressed: isRecording ? null : acilDurumKaydiniBaslat,
+                icon: Icon(isRecording ? Icons.mic : Icons.mic_none),
+                label: Text(
+                  isRecording
+                      ? "15 Sn Kaydediliyor..."
+                      : "Acil Durum (Ses Kaydı)",
+                ),
+                style: ElevatedButton.styleFrom(
+                  // Kayıt anında buton kırmızı olur, normalde mavidir
+                  backgroundColor: isRecording ? Colors.red : Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 15,
+                  ),
+                ),
+              ),
               // 1. BÖLÜM: DEV PANİK BUTONU
               SizedBox(height: 20),
               Center(
