@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "491584381634",
+    "project_id": "gozunarkadakalmasin",
+    "storage_bucket": "gozunarkadakalmasin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:491584381634:android:bcd28268fadfcc4984515b",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqaO5S0FC0xl65Wd4CfE8cULEl6jWYx5Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
