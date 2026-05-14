@@ -4,11 +4,14 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'services/wake_word_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
-import 'package:direct_sms/direct_sms.dart';
+import 'package:telephony/telephony.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
 
-void main() {
+void main() async {
+
   runApp(MyApp());
 }
 
@@ -43,7 +46,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   TextEditingController kelimeController = TextEditingController();
   bool korumaAcikmi = false;
   SesDinlemeServisi? _sesDinlemeServisi;
-  final DirectSms directSms = DirectSms();
+  final Telephony telephony = Telephony.instance;
 
   @override
   void initState() {
@@ -200,8 +203,36 @@ class _AnaSayfaState extends State<AnaSayfa> {
       return;
     }
 
+    // --- 1. ADIM: SES KAYDINI ARKA PLANDA BAŞLAT ---
+    // Konum bulunurken ve ilk mesaj atılırken kayıt çoktan başlamış olacak.
+    acilDurumKaydiniBaslat().then((dosyaYolu) async {
+      if (dosyaYolu != null) {
+        print("📁 30 Saniyelik Ses dosyası hazır: $dosyaYolu");
+        
+        // Ses dosyasını Firebase'e yükle ve linki al
+        String? sesLinki = await sesiUcretsizBulutaYukle(dosyaYolu);
+
+        // Eğer yükleme başarılıysa ve link geldiyse 2. SMS'i at
+        if (sesLinki != null) {
+          String ikinciMesaj = "Ses kaydım tamamlandı. O anki durumu dinlemek için tıklayın: $sesLinki";
+          
+          for (var kisi in secilenKisiler) {
+            String numara = kisi['numara']!;
+            telephony.sendSms(
+              to: numara, 
+              message: ikinciMesaj,
+              isMultipart: true // Uzun linkler için hayat kurtaran ayar!
+            );
+            print("✅ BAŞARILI: İkinci SMS (Ses Linki) '${kisi['ad']}' kişisine gönderildi.");
+          }
+        } else {
+          print("❌ Buluta yükleme başarısız olduğu için 2. SMS atılamadı.");
+        }
+      }
+    });
+
     try {
-      // 1. Konum İzni Kontrolü ve İstenmesi
+      // 2. Konum İzni Kontrolü ve İstenmesi
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -216,26 +247,33 @@ class _AnaSayfaState extends State<AnaSayfa> {
         return;
       }
 
-      // 2. SMS İzni Kontrolü ve İstenmesi
+      // 3. SMS İzni Kontrolü ve İstenmesi
       PermissionStatus smsIzin = await Permission.sms.request();
       if (!smsIzin.isGranted) {
         print("❌ HATA: SMS gönderme izni reddedildi.");
         return;
       }
 
+      // 4. Konumu Al ve İlk Mesajı Gönder
       Position konum = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Google Maps linki sorunsuz tıklanması için standart formata çevrildi
+      // Harita linki standart formata güncellendi
       String haritaLinki =
           "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
-      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki";
+      
+      // Mesaja ses kaydının geleceği bilgisini ekledik
+      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki\n(30 saniye içinde ses kaydım da iletilecek)";
 
       for (var kisi in secilenKisiler) {
         String numara = kisi['numara']!;
-        directSms.sendSms(message: acilMesaj, phone: numara);
-        print("✅ BAŞARILI: SMS '${kisi['ad']}' kişisine gönderildi.");
+        telephony.sendSms(
+          to: numara, 
+          message: acilMesaj,
+          isMultipart: true
+        );
+        print("✅ BAŞARILI: İlk SMS (Konum) '${kisi['ad']}' kişisine gönderildi.");
       }
     } catch (e) {
       print("❌ KRİTİK HATA: $e");
@@ -246,44 +284,72 @@ class _AnaSayfaState extends State<AnaSayfa> {
   final record = AudioRecorder();
   bool isRecording = false;
 
-  // 15 saniyelik otomatik kayıt fonksiyonu
-  Future<void> acilDurumKaydiniBaslat() async {
+  // 30 saniyelik acil durum kayıt fonksiyonu
+  Future<String?> acilDurumKaydiniBaslat() async {
     try {
-      // Mikrofon izni kontrolü
       if (await record.hasPermission()) {
         setState(() {
-          isRecording = true; // Buton rengini değiştirmek için
+          isRecording = true;
         });
 
-        // Kaydı başlat (Güvenli klasör yolu alarak)
         final directory = await getApplicationDocumentsDirectory();
-        final sesDosyasiYolu = '${directory.path}/acil_durum_kaydi.m4a';
+        // Her kaydın üzerine yazmaması için isme tarih damgası ekliyoruz
+        final String dosyaAdi = "kayit_${DateTime.now().millisecondsSinceEpoch}.m4a";
+        final sesDosyasiYolu = '${directory.path}/$dosyaAdi';
+        
         await record.start(const RecordConfig(), path: sesDosyasiYolu);
-        print("🎙️ Kayıt başladı! 15 saniye sayılıyor...");
+        print("🎙️ Acil durum kaydı başladı (30 Sn)...");
 
-        // 15 saniye bekle ve durdur
-        Future.delayed(const Duration(seconds: 15), () async {
-          if (await record.isRecording()) {
-            final String? dosyaYolu = await record.stop();
-
-            if (mounted) {
-              setState(() {
-                isRecording = false; // Kayıt bittiğinde butonu normale döndür
-              });
-            }
-
-            print("✅ 15 saniye doldu. Kayıt otomatik durdu!");
-            print("📁 Dosya yolu: $dosyaYolu");
+        // 30 saniye bekle
+        await Future.delayed(const Duration(seconds: 30));
+        
+        if (await record.isRecording()) {
+          final String? dosyaYolu = await record.stop();
+          if (mounted) {
+            setState(() {
+              isRecording = false;
+            });
           }
-        });
+          print("✅ 30 saniyelik kayıt tamamlandı: $dosyaYolu");
+          return dosyaYolu; // Dosya yolunu dışarı aktarıyoruz ki SMS atabilelim
+        }
       } else {
         print("❌ Mikrofon izni verilmedi!");
       }
     } catch (e) {
       print("❌ Kayıt başlatılırken hata oluştu: $e");
     }
+    return null;
   }
 
+  // --- SES DOSYASINI ÜCRETSİZ VE ANONİM SUNUCUYA YÜKLEME ---
+  Future<String?> sesiUcretsizBulutaYukle(String dosyaYolu) async {
+    try {
+      print("☁️ Dosya ücretsiz sunucuya yükleniyor...");
+      
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('https://catbox.moe/user/api.php')
+      );
+      
+      request.fields['reqtype'] = 'fileupload';
+      request.files.add(await http.MultipartFile.fromPath('fileToUpload', dosyaYolu));
+
+      var response = await request.send();
+      
+      if (response.statusCode == 200) {
+        String indirmeLinki = await response.stream.bytesToString();
+        print("✅ Ücretsiz Yükleme Başarılı! Link: $indirmeLinki");
+        return indirmeLinki;
+      } else {
+        print("❌ Sunucu hatası: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("❌ Yükleme hatası: $e");
+    }
+    return null;
+  }
+  
   // --- ARAYÜZ (UI) ---
 
   @override
@@ -305,25 +371,34 @@ class _AnaSayfaState extends State<AnaSayfa> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ElevatedButton.icon(
-                // Eğer kayıt yapılıyorsa butona tekrar basılmasını engelle
-                onPressed: isRecording ? null : acilDurumKaydiniBaslat,
-                icon: Icon(isRecording ? Icons.mic : Icons.mic_none),
-                label: Text(
-                  isRecording
-                      ? "15 Sn Kaydediliyor..."
-                      : "Acil Durum (Ses Kaydı)",
-                ),
-                style: ElevatedButton.styleFrom(
-                  // Kayıt anında buton kırmızı olur, normalde mavidir
-                  backgroundColor: isRecording ? Colors.red : Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 15,
+
+              // --- KAYIT DURUMU GÖSTERGESİ (Sadece kayıt varken görünür) ---
+              if (isRecording)
+                Container(
+                  margin: EdgeInsets.only(bottom: 20),
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.red, width: 2),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Yanıp sönen efekti andırması için kırmızı mikrofon
+                      Icon(Icons.fiber_manual_record, color: Colors.red, size: 24),
+                      SizedBox(width: 10),
+                      Text(
+                        "Acil Durum Sesi Kaydediliyor...",
+                        style: TextStyle(
+                          color: Colors.red[900],
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
               // 1. BÖLÜM: DEV PANİK BUTONU
               SizedBox(height: 20),
               Center(
