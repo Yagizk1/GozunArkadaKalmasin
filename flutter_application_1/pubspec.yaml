@@ -20,9 +20,6 @@ dependencies:
   pitch_detector_dart: any
   record: any
   path_provider: ^2.1.5
-  firebase_storage: ^13.4.0
-  firebase_core: ^4.8.0
-  http: ^1.6.0
   telephony: ^0.2.0
 
 dev_dependencies:

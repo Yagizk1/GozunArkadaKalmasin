@@ -7,7 +7,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:telephony/telephony.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 
 void main() async {
@@ -88,12 +87,12 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 if (mounted) Navigator.pop(dialogContext);
                 gercekAcilDurumTetikte();
 
-                // 1. GÜNCELLEME: Gerçekten mesaj atıldıktan sonra (süre bitince)
-                // koruma hala açıksa sistemi tekrar dinlemeye al.
+                // 1. GÜNCELLEME: Mikrofon çakışmasını önlemek için,
+                // 30 saniyelik ses kaydı BİTTİKTEN SONRA dinlemeyi başlatıyoruz (32 sn bekleme).
                 if (korumaAcikmi) {
-                  Future.delayed(Duration(seconds: 2), () {
+                  Future.delayed(Duration(seconds: 32), () {
                     _sesDinlemeServisi?.startListening(tetikleyiciKelimeler);
-                    print("Koruma modu açık: Dinleme yeniden başlatıldı.");
+                    print("Koruma modu açık: 30sn kayıt bitti, dinleme yeniden başlatıldı.");
                   });
                 }
               }
@@ -203,36 +202,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
       return;
     }
 
-    // --- 1. ADIM: SES KAYDINI ARKA PLANDA BAŞLAT ---
-    // Konum bulunurken ve ilk mesaj atılırken kayıt çoktan başlamış olacak.
-    acilDurumKaydiniBaslat().then((dosyaYolu) async {
-      if (dosyaYolu != null) {
-        print("📁 30 Saniyelik Ses dosyası hazır: $dosyaYolu");
-        
-        // Ses dosyasını Firebase'e yükle ve linki al
-        String? sesLinki = await sesiUcretsizBulutaYukle(dosyaYolu);
-
-        // Eğer yükleme başarılıysa ve link geldiyse 2. SMS'i at
-        if (sesLinki != null) {
-          String ikinciMesaj = "Ses kaydım tamamlandı. O anki durumu dinlemek için tıklayın: $sesLinki";
-          
-          for (var kisi in secilenKisiler) {
-            String numara = kisi['numara']!;
-            telephony.sendSms(
-              to: numara, 
-              message: ikinciMesaj,
-              isMultipart: true // Uzun linkler için hayat kurtaran ayar!
-            );
-            print("✅ BAŞARILI: İkinci SMS (Ses Linki) '${kisi['ad']}' kişisine gönderildi.");
-          }
-        } else {
-          print("❌ Buluta yükleme başarısız olduğu için 2. SMS atılamadı.");
-        }
-      }
-    });
+    // 1. DÜZELTME: Mikrofon çakışmasını önlemek için arka plan dinlemesini kesin olarak durduruyoruz!
+    _sesDinlemeServisi?.stopListening();
 
     try {
-      // 2. Konum İzni Kontrolü ve İstenmesi
+      // 2. DÜZELTME: İzinleri kayıt BAŞLAMADAN ÖNCE alıyoruz. (Sistem pop-up çıkarırsa kaydı kesmesin diye)
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -247,23 +221,45 @@ class _AnaSayfaState extends State<AnaSayfa> {
         return;
       }
 
-      // 3. SMS İzni Kontrolü ve İstenmesi
       PermissionStatus smsIzin = await Permission.sms.request();
       if (!smsIzin.isGranted) {
         print("❌ HATA: SMS gönderme izni reddedildi.");
         return;
       }
 
-      // 4. Konumu Al ve İlk Mesajı Gönder
+      // --- İZİNLER TAMAM, ŞİMDİ SES KAYDINI ARKA PLANDA BAŞLAT ---
+      acilDurumKaydiniBaslat().then((dosyaYolu) async {
+        if (dosyaYolu != null) {
+          print("📁 30 Saniyelik Ses dosyası hazır: $dosyaYolu");
+          
+          String? sesLinki = await sesiUcretsizBulutaYukle(dosyaYolu);
+
+          if (sesLinki != null) {
+            String ikinciMesaj = "Ses kaydım tamamlandı. O anki durumu dinlemek için tıklayın: $sesLinki";
+            
+            for (var kisi in secilenKisiler) {
+              String numara = kisi['numara']!;
+              telephony.sendSms(
+                to: numara, 
+                message: ikinciMesaj,
+                isMultipart: true 
+              );
+              print("✅ BAŞARILI: İkinci SMS (Ses Linki) '${kisi['ad']}' kişisine gönderildi.");
+            }
+          } else {
+            print("❌ Buluta yükleme başarısız olduğu için 2. SMS atılamadı.");
+          }
+        }
+      });
+
+      // --- AYNI ANDA KONUMU AL VE İLK MESAJI GÖNDER ---
       Position konum = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Harita linki standart formata güncellendi
       String haritaLinki =
           "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
       
-      // Mesaja ses kaydının geleceği bilgisini ekledik
       String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki\n(30 saniye içinde ses kaydım da iletilecek)";
 
       for (var kisi in secilenKisiler) {
