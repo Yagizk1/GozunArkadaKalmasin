@@ -8,9 +8,11 @@ import 'package:telephony/telephony.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
-
+  // Gerekli servislerin uygulama başlamadan önce hazır olmasını sağlar.
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(MyApp());
 }
 
@@ -22,11 +24,16 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Gözün Arkada Kalmasın',
+      // main.dart içinde MyApp sınıfının içindeki theme kısmına yapıştır
       theme: ThemeData(
-        primarySwatch: Colors.red,
-        scaffoldBackgroundColor: Colors.grey[100],
+        useMaterial3: true,
+        textTheme: GoogleFonts.poppinsTextTheme(), // Tüm yazılar Poppins oldu
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFB71C1C),
+          primary: const Color(0xFFB71C1C),
+        ),
       ),
-      home: AnaSayfa(),
+      home: const AnaSayfa(),
     );
   }
 }
@@ -92,7 +99,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 if (korumaAcikmi) {
                   Future.delayed(Duration(seconds: 32), () {
                     _sesDinlemeServisi?.startListening(tetikleyiciKelimeler);
-                    print("Koruma modu açık: 30sn kayıt bitti, dinleme yeniden başlatıldı.");
+                    print(
+                      "Koruma modu açık: 30sn kayıt bitti, dinleme yeniden başlatıldı.",
+                    );
                   });
                 }
               }
@@ -231,20 +240,23 @@ class _AnaSayfaState extends State<AnaSayfa> {
       acilDurumKaydiniBaslat().then((dosyaYolu) async {
         if (dosyaYolu != null) {
           print("📁 30 Saniyelik Ses dosyası hazır: $dosyaYolu");
-          
+
           String? sesLinki = await sesiUcretsizBulutaYukle(dosyaYolu);
 
           if (sesLinki != null) {
-            String ikinciMesaj = "Ses kaydım tamamlandı. O anki durumu dinlemek için tıklayın: $sesLinki";
-            
+            String ikinciMesaj =
+                "Ses kaydım tamamlandı. O anki durumu dinlemek için tıklayın: $sesLinki";
+
             for (var kisi in secilenKisiler) {
               String numara = kisi['numara']!;
               telephony.sendSms(
-                to: numara, 
+                to: numara,
                 message: ikinciMesaj,
-                isMultipart: true 
+                isMultipart: true,
               );
-              print("✅ BAŞARILI: İkinci SMS (Ses Linki) '${kisi['ad']}' kişisine gönderildi.");
+              print(
+                "✅ BAŞARILI: İkinci SMS (Ses Linki) '${kisi['ad']}' kişisine gönderildi.",
+              );
             }
           } else {
             print("❌ Buluta yükleme başarısız olduğu için 2. SMS atılamadı.");
@@ -259,17 +271,16 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
       String haritaLinki =
           "https://maps.google.com/?q=${konum.latitude},${konum.longitude}";
-      
-      String acilMesaj = "IMDAT! Tehlikedeyim. Konumum: $haritaLinki\n(30 saniye içinde ses kaydım da iletilecek)";
+
+      String acilMesaj =
+          "IMDAT! Tehlikedeyim. Konumum: $haritaLinki\n(30 saniye içinde ses kaydım da iletilecek)";
 
       for (var kisi in secilenKisiler) {
         String numara = kisi['numara']!;
-        telephony.sendSms(
-          to: numara, 
-          message: acilMesaj,
-          isMultipart: true
+        telephony.sendSms(to: numara, message: acilMesaj, isMultipart: true);
+        print(
+          "✅ BAŞARILI: İlk SMS (Konum) '${kisi['ad']}' kişisine gönderildi.",
         );
-        print("✅ BAŞARILI: İlk SMS (Konum) '${kisi['ad']}' kişisine gönderildi.");
       }
     } catch (e) {
       print("❌ KRİTİK HATA: $e");
@@ -290,15 +301,16 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
         final directory = await getApplicationDocumentsDirectory();
         // Her kaydın üzerine yazmaması için isme tarih damgası ekliyoruz
-        final String dosyaAdi = "kayit_${DateTime.now().millisecondsSinceEpoch}.m4a";
+        final String dosyaAdi =
+            "kayit_${DateTime.now().millisecondsSinceEpoch}.m4a";
         final sesDosyasiYolu = '${directory.path}/$dosyaAdi';
-        
+
         await record.start(const RecordConfig(), path: sesDosyasiYolu);
         print("🎙️ Acil durum kaydı başladı (30 Sn)...");
 
         // 30 saniye bekle
         await Future.delayed(const Duration(seconds: 30));
-        
+
         if (await record.isRecording()) {
           final String? dosyaYolu = await record.stop();
           if (mounted) {
@@ -322,17 +334,19 @@ class _AnaSayfaState extends State<AnaSayfa> {
   Future<String?> sesiUcretsizBulutaYukle(String dosyaYolu) async {
     try {
       print("☁️ Dosya ücretsiz sunucuya yükleniyor...");
-      
+
       var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('https://catbox.moe/user/api.php')
+        'POST',
+        Uri.parse('https://catbox.moe/user/api.php'),
       );
-      
+
       request.fields['reqtype'] = 'fileupload';
-      request.files.add(await http.MultipartFile.fromPath('fileToUpload', dosyaYolu));
+      request.files.add(
+        await http.MultipartFile.fromPath('fileToUpload', dosyaYolu),
+      );
 
       var response = await request.send();
-      
+
       if (response.statusCode == 200) {
         String indirmeLinki = await response.stream.bytesToString();
         print("✅ Ücretsiz Yükleme Başarılı! Link: $indirmeLinki");
@@ -345,366 +359,418 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
     return null;
   }
-  
+
+  // --- ARAYÜZ (UI) ---
+
   // --- ARAYÜZ (UI) ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
+
+      // 1. YENİLİK: ŞIK GRADYANLI ÜST BAR
       appBar: AppBar(
         title: Text(
           "Gözün Arkada Kalmasın",
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+            color: Colors.white,
+          ),
         ),
-        backgroundColor: Colors.pink[800],
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Colors.pink[900]!, Colors.red[700]!],
+            ),
+          ),
+        ),
         centerTitle: true,
-        elevation: 0,
+        elevation: 4,
+        shadowColor: Colors.redAccent.withOpacity(0.5),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
 
-              // --- KAYIT DURUMU GÖSTERGESİ (Sadece kayıt varken görünür) ---
-              if (isRecording)
-                Container(
-                  margin: EdgeInsets.only(bottom: 20),
-                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.red, width: 2),
+      // 2. YENİLİK: EL İŞARETLİ ARKA PLAN RESMİ
+      body: Container(
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/el_arka_plan.png'),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              // Arka plan yazıları kapatmasın diye şeffaflık eklendi
+              Colors.white.withOpacity(0.15),
+              BlendMode.dstATop,
+            ),
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // --- KAYIT DURUMU GÖSTERGESİ ---
+                  if (isRecording)
+                    Container(
+                      margin: EdgeInsets.only(bottom: 20),
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.red, width: 2),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.fiber_manual_record,
+                            color: Colors.red,
+                            size: 24,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            "Acil Durum Sesi Kaydediliyor...",
+                            style: TextStyle(
+                              color: Colors.red[900],
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // 3. YENİLİK: DEV PANİK BUTONU (MODERN TASARIM)
+                  SizedBox(height: 20),
+                  Center(
+                    child: Container(
+                      width: 240,
+                      height: 240,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Colors.pink[400]!, Colors.red[900]!],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.red.withOpacity(0.5),
+                            spreadRadius: 10,
+                            blurRadius: 25,
+                            offset: Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          splashColor: Colors.white30,
+                          onTap: () {
+                            print("🚨 MANUEL SOS BUTONUNA BASILDI! 🚨");
+                            acilDurumBaslat();
+                          },
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.touch_app,
+                                size: 70,
+                                color: Colors.white,
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                "YARDIM\nİSTE",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.2,
+                                  letterSpacing: 2.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Yanıp sönen efekti andırması için kırmızı mikrofon
-                      Icon(Icons.fiber_manual_record, color: Colors.red, size: 24),
-                      SizedBox(width: 10),
-                      Text(
-                        "Acil Durum Sesi Kaydediliyor...",
+                  SizedBox(height: 30),
+
+                  // 4. BÖLÜM: DİNLEME (KORUMA) MODU ANAHTARI
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: SwitchListTile(
+                      title: Text(
+                        "Sesli Koruma Modu",
                         style: TextStyle(
-                          color: Colors.red[900],
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              // 1. BÖLÜM: DEV PANİK BUTONU
-              SizedBox(height: 20),
-              Center(
-                child: Container(
-                  width: 220,
-                  height: 220,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.redAccent.withOpacity(0.4),
-                        spreadRadius: 15,
-                        blurRadius: 30,
-                        offset: Offset(0, 5),
+                      subtitle: Text(
+                        korumaAcikmi
+                            ? "Arka planda tetikleyici kelimeler dinleniyor."
+                            : "Dinleme kapalı.",
                       ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[700],
-                      shape: CircleBorder(),
-                      padding: EdgeInsets.all(40),
-                      elevation: 10,
-                    ),
-                    onPressed: () {
-                      print("🚨 MANUEL SOS BUTONUNA BASILDI! 🚨");
-                      acilDurumBaslat(); // BUTON ARTIK DOĞRUDAN TETİKLİYOR
-                    },
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.touch_app, size: 60, color: Colors.white),
-                        SizedBox(height: 10),
-                        Text(
-                          "YARDIM\nİSTE",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
+                      secondary: Icon(
+                        korumaAcikmi ? Icons.mic : Icons.mic_off,
+                        color: korumaAcikmi ? Colors.green : Colors.grey,
+                        size: 32,
+                      ),
+                      value: korumaAcikmi,
+                      activeColor: Colors.green,
+                      onChanged: (bool deger) {
+                        setState(() {
+                          korumaAcikmi = deger;
+                          if (korumaAcikmi) {
+                            _sesDinlemeServisi?.startListening(
+                              tetikleyiciKelimeler,
+                            );
+                          } else {
+                            _sesDinlemeServisi?.stopListening();
+                          }
+                        });
+                      },
                     ),
                   ),
-                ),
-              ),
-              SizedBox(height: 30),
+                  SizedBox(height: 20),
 
-              // 2. BÖLÜM: DİNLEME (KORUMA) MODU ANAHTARI
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: SwitchListTile(
-                  title: Text(
-                    "Sesli Koruma Modu",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    korumaAcikmi
-                        ? "Arka planda tetikleyici kelimeler dinleniyor."
-                        : "Dinleme kapalı.",
-                  ),
-                  secondary: Icon(
-                    korumaAcikmi ? Icons.mic : Icons.mic_off,
-                    color: korumaAcikmi ? Colors.green : Colors.grey,
-                    size: 32,
-                  ),
-                  value: korumaAcikmi,
-                  activeColor: Colors.green,
-                  onChanged: (bool deger) {
-                    setState(() {
-                      korumaAcikmi = deger;
-                      if (korumaAcikmi) {
-                        _sesDinlemeServisi?.startListening(
-                          tetikleyiciKelimeler,
-                        );
-                      } else {
-                        _sesDinlemeServisi?.stopListening();
-                      }
-                    });
-                  },
-                ),
-              ),
-              SizedBox(height: 20),
-
-              // 3. BÖLÜM: TETİKLEYİCİ KELİMELER KARTI
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  // 5. BÖLÜM: TETİKLEYİCİ KELİMELER KARTI
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.record_voice_over,
-                            color: Colors.pink[800],
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            "Tetikleyici Kelimeler",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Divider(height: 20, thickness: 1),
-
-                      Wrap(
-                        spacing: 8.0,
-                        runSpacing: 4.0,
-                        children: tetikleyiciKelimeler.map((kelime) {
-                          return Chip(
-                            label: Text(kelime),
-                            backgroundColor: Colors.pink[50],
-                            deleteIcon: tetikleyiciKelimeler.length > 1
-                                ? Icon(
-                                    Icons.cancel,
-                                    size: 20,
-                                    color: Colors.pink[900],
-                                  )
-                                : null,
-                            onDeleted: tetikleyiciKelimeler.length > 1
-                                ? () {
-                                    setState(() {
-                                      tetikleyiciKelimeler.remove(kelime);
-                                    });
-                                  }
-                                : null,
-                          );
-                        }).toList(),
-                      ),
-                      SizedBox(height: 15),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: kelimeController,
-                              decoration: InputDecoration(
-                                hintText: "Yeni kelime ekle...",
-                                prefixIcon: Icon(
-                                  Icons.add_comment,
-                                  color: Colors.grey,
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey[200],
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 0,
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.record_voice_over,
+                                color: Colors.pink[800],
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                "Tetikleyici Kelimeler",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                          SizedBox(width: 10),
-                          ElevatedButton(
-                            onPressed: () {
-                              String yeniKelime = kelimeController.text
-                                  .trim()
-                                  .toLowerCase();
-                              if (yeniKelime.isNotEmpty &&
-                                  !tetikleyiciKelimeler.contains(yeniKelime)) {
-                                setState(() {
-                                  tetikleyiciKelimeler.add(yeniKelime);
-                                  kelimeController.clear();
-                                });
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.pink[800],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 14,
-                              ),
-                            ),
-                            child: Text(
-                              "Ekle",
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: 20),
-
-              // 4. BÖLÜM: ACİL DURUM KİŞİLERİ KARTI
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.contact_phone, color: Colors.pink[800]),
-                          SizedBox(width: 10),
-                          Text(
-                            "Acil Durum Kişileri",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Divider(height: 20, thickness: 1),
-
-                      // Kişi Ekleme Butonu
-                      Center(
-                        child: ElevatedButton.icon(
-                          onPressed: rehberiAcVeKisiSec,
-                          icon: Icon(Icons.person_add, color: Colors.white),
-                          label: Text(
-                            "Rehberden Kişi Ekle",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.pink[800],
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 15),
-
-                      // Eklenen Kişilerin Listesi
-                      secilenKisiler.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Text(
-                                  "Henüz acil durum kişisi eklenmedi.",
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: secilenKisiler.length,
-                              itemBuilder: (context, index) {
-                                var kisi = secilenKisiler[index];
-                                return Card(
-                                  color: Colors.pink[50],
-                                  elevation: 0,
-                                  margin: EdgeInsets.symmetric(vertical: 4),
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.pink[200],
-                                      child: Icon(
-                                        Icons.person,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    title: Text(
-                                      kisi['ad']!,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    subtitle: Text(kisi['numara']!),
-                                    trailing: IconButton(
-                                      icon: Icon(
-                                        Icons.delete,
-                                        color: Colors.red[400],
-                                      ),
-                                      onPressed: () {
+                          Divider(height: 20, thickness: 1),
+                          Wrap(
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: tetikleyiciKelimeler.map((kelime) {
+                              return Chip(
+                                label: Text(kelime),
+                                backgroundColor: Colors.pink[50],
+                                deleteIcon: tetikleyiciKelimeler.length > 1
+                                    ? Icon(
+                                        Icons.cancel,
+                                        size: 20,
+                                        color: Colors.pink[900],
+                                      )
+                                    : null,
+                                onDeleted: tetikleyiciKelimeler.length > 1
+                                    ? () {
                                         setState(() {
-                                          secilenKisiler.removeAt(index);
+                                          tetikleyiciKelimeler.remove(kelime);
                                         });
-                                      },
+                                      }
+                                    : null,
+                              );
+                            }).toList(),
+                          ),
+                          SizedBox(height: 15),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: kelimeController,
+                                  decoration: InputDecoration(
+                                    hintText: "Yeni kelime ekle...",
+                                    prefixIcon: Icon(
+                                      Icons.add_comment,
+                                      color: Colors.grey,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey[200],
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      vertical: 0,
                                     ),
                                   ),
-                                );
-                              },
-                            ),
-                    ],
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              ElevatedButton(
+                                onPressed: () {
+                                  String yeniKelime = kelimeController.text
+                                      .trim()
+                                      .toLowerCase();
+                                  if (yeniKelime.isNotEmpty &&
+                                      !tetikleyiciKelimeler.contains(
+                                        yeniKelime,
+                                      )) {
+                                    setState(() {
+                                      tetikleyiciKelimeler.add(yeniKelime);
+                                      kelimeController.clear();
+                                    });
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.pink[800],
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 14,
+                                  ),
+                                ),
+                                child: Text(
+                                  "Ekle",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  SizedBox(height: 20),
+
+                  // 6. BÖLÜM: ACİL DURUM KİŞİLERİ KARTI
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.contact_phone,
+                                color: Colors.pink[800],
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                "Acil Durum Kişileri",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Divider(height: 20, thickness: 1),
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: rehberiAcVeKisiSec,
+                              icon: Icon(Icons.person_add, color: Colors.white),
+                              label: Text(
+                                "Rehberden Kişi Ekle",
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.pink[800],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 15),
+                          // Eklenen Kişilerin Listesi
+                          secilenKisiler.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Text(
+                                      "Henüz acil durum kişisi eklenmedi.",
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: NeverScrollableScrollPhysics(),
+                                  itemCount: secilenKisiler.length,
+                                  itemBuilder: (context, index) {
+                                    var kisi = secilenKisiler[index];
+                                    return Card(
+                                      color: Colors.pink[50],
+                                      elevation: 0,
+                                      margin: EdgeInsets.symmetric(vertical: 4),
+                                      child: ListTile(
+                                        leading: CircleAvatar(
+                                          backgroundColor: Colors.pink[200],
+                                          child: Icon(
+                                            Icons.person,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        title: Text(
+                                          kisi['ad']!,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        subtitle: Text(kisi['numara']!),
+                                        trailing: IconButton(
+                                          icon: Icon(
+                                            Icons.delete,
+                                            color: Colors.red[400],
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              secilenKisiler.removeAt(index);
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 30),
+                ],
               ),
-              SizedBox(height: 30),
-            ],
+            ),
           ),
         ),
       ),
