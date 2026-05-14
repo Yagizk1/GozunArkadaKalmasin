@@ -13,7 +13,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_contacts: ^1.1.9+2
   geolocator: ^14.0.2
-  direct_sms: ^0.0.1
   
   # Modern ve Sorunsuz Ses Algılama Paketleri
   permission_handler: any
