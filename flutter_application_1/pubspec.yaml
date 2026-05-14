@@ -21,6 +21,7 @@ dependencies:
   pitch_detector_dart: any
   record: any
   path_provider: ^2.1.5
+  telephony: ^0.2.0
 
 dev_dependencies:
   flutter_test:
